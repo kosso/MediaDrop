@@ -1,0 +1,707 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>MediaDrop -  @kosso</title>	
+
+<!--
+	MediaDrop.
+	
+	No dependencies. 
+
+	Provides a simple interface to drag and drop a single image, audio or video file onto the browser
+	and read the information from it and providing the data for uploading somewhere. 
+	- Image files do nothing but ready the file for whatever you need.
+	- Audio files will automatically create an audio waveform PNG file. 
+	- Video files allow the user to to choose a frame and create a thumbnail image. 
+
+	Pretty damn cool, if you ask me!
+	... which you didn't.
+	But hey.. At least you're reading this!  :) 
+	
+	: @kosso : December 2016
+	: License : Attribution 3.0 Unported (CC BY 3.0) : https://creativecommons.org/licenses/by/3.0/ 
+
+-->
+
+<script>
+
+	/* Options */
+	var wave_col = '#333'; // Audio waveform colour
+	var wave_width = 1000; // Audio waveform width
+	var wave_height = 500; // Audio waveform height
+
+
+
+	var el_drop, el_media, el_status, el_fname, el_ftype, el_fsize, el_fduration, el_time, el_time_val, el_media_width, el_media_height, el_thumb, el_wave, f_type, f_name, f_width, f_height, f_size, f_duration, f_duration_fmt, file_blob, audioCtx, logs, busy, busy_cont, time_now = 0;
+
+    function init(){
+
+        if (!(window.File || window.FileReader || window.Blob)) {
+        	alert('The required File APIs are not fully supported in this browser.');
+        	return;
+        }
+        if (!(window.AudioContext || window.webkitAudioContext)) {
+            alert('The required AudioContext APIs are not fully supported in this browser.');
+            return;
+        }
+
+        logs = document.getElementById('logs');
+
+    	el_status = document.getElementById('status');
+    	el_drop = document.getElementById('droptarget');        	
+    	el_fname = document.getElementById('f_name');
+    	el_ftype = document.getElementById('f_type');
+    	el_fsize = document.getElementById('f_size');
+    	el_fduration = document.getElementById('f_duration');
+    	el_wave = document.getElementById('wave');
+    	// stop file drops on the rest of the page
+    	window.addEventListener('dragover',function(e){
+		  e.preventDefault();
+		},false);
+		window.addEventListener('drop',function(e){
+		  e.preventDefault();
+		},false);
+
+        console.log('ready');
+
+    }	
+
+    function createBusySpinner(){
+
+		busy_cont = document.createElement('div');
+		busy_cont.id = 'busy_cont';
+		busy = document.createElement('div');
+		busy.id = 'busy';
+		busy.className = 'spinner';
+		var dot = document.createElement('div');
+		dot.id = 'dot';
+		busy.appendChild(dot);
+		busy_cont.appendChild(busy);
+		return busy_cont;
+    }
+
+	function allowDrop(ev) {
+		// console.log('dragover: ', ev.dataTransfer.items.length);
+		if(ev.dataTransfer.items.length === 1){
+			el_drop.style.borderColor = 'green';
+			ev.dataTransfer.dropEffect = 'copy';
+		}
+	    ev.preventDefault();
+	}
+
+	function drag(ev) {
+		// console.log('drag: ', ev);
+	    // ev.dataTransfer.setData("text", ev.target.id);
+	}
+
+	function dragout(){
+		el_drop.style.borderColor = '#ddd';
+	}
+
+	function stat(t){
+		el_status.innerHTML = t;
+	}
+
+	function msg(t){
+		var el_msg = document.createElement('p');
+		el_msg.innerHTML = t;
+		el_drop.appendChild(el_msg);
+	}
+
+	function drop(ev) {
+		ev.preventDefault();
+		el_drop.style.borderColor = '#ddd';
+	    var dt = ev.dataTransfer;
+		var files = dt.files;
+		if(files.length === 0){
+			return; /* this can be triggered when accidentally grabbing an already loaded image in the drop target */
+		}
+		if(files.length > 1){
+			removeAllChildren(el_drop);
+			msg('one file only please');
+			return;
+		}
+		file_blob = null;
+		el_thumb = null;
+
+		time_now = 0;
+		removeAllChildren(el_drop);
+
+		el_fduration.innerHTML = el_fsize.innerHTML = el_fname.innerHTML = el_ftype.innerHTML = '';
+
+	    busy_cont = createBusySpinner()
+	      	el_drop.appendChild(busy_cont);
+
+	    msg('loading file');
+	    stat('file dropped');
+
+	    var _blob;
+
+		for (var i=0; i<files.length; i++) {
+			var file = files[i];
+	    	// console.log('loading file: ', file);
+	    	// file.size
+	    	// file.type
+	    	// file.name
+	    	f_name = file.name;
+	    	f_type = file.type;
+	    	f_size = file.size;
+
+	    	el_fname.innerHTML = f_name;
+			el_fsize.innerHTML = f_size + ' bytes';
+			el_ftype.innerHTML = f_type;
+
+			console.log('file: ', file);
+	    	
+			file_blob = URL.createObjectURL(file);
+			// console.log('file_blob: ', file_blob);
+
+			removeAllChildren(el_drop);
+
+			if(f_type === 'image/jpeg' || f_type === 'image/gif' || f_type === 'image/png'){
+
+            	busy_cont = createBusySpinner();
+            	el_drop.appendChild(busy_cont);
+
+            	el_media = document.createElement('img');
+            	el_media.id = 'media';
+            	el_media.src = file_blob;
+            	el_fduration.innerHTML = '-';
+            	el_drop.appendChild(el_media);
+            	el_media.addEventListener('load', function(e){
+					console.log('image loaded: ', e);
+					console.log(el_media.naturalWidth);
+					el_fduration.innerHTML = el_media.naturalWidth + ' x ' + el_media.naturalHeight;
+					stat('image loaded');
+					el_drop.removeChild(busy_cont);
+
+					// Image ready ...
+				});
+
+            } else if(f_type === 'video/mp4'){
+            	stat('loading video');
+            	busy_cont = createBusySpinner();
+            	el_drop.appendChild(busy_cont);
+                el_media = document.createElement('video'); 
+                el_media.setAttribute('controls', true);
+				var source = document.createElement('source');
+				source.type = f_type;
+				source.src = file_blob;
+				el_media.appendChild(source);
+				el_media.addEventListener('durationchange', function(e){
+					// console.log('video durationchange: ', e);
+					f_duration = e.target.duration; // in float seconds
+					f_duration_fmt = SecondsTohhmmss(Math.floor(f_duration - 0.5));
+					el_fduration.innerHTML = f_duration + ' seconds ['+f_duration_fmt+']';
+				});
+
+	        	el_media.addEventListener('load', function(e){
+					//console.log('load: ', e);
+				});
+
+	        	el_media.addEventListener('timeupdate', function(e){
+	        		// console.log(e);
+	        		time_now = e.target.currentTime;
+	        		el_time_val.innerHTML = SecondsTohhmmss(time_now);
+	        	});
+
+	        	var meta_loaded = false;
+
+				el_media.onloadedmetadata = function(e) {
+					if(meta_loaded===true){
+						return; // just in case
+					}
+					// console.log('video metadata ready: ', e);
+					meta_loaded = true;
+					f_width = e.target.videoWidth;
+					f_height = e.target.videoHeight;
+
+					el_fname.innerHTML += ' ['+f_width+' x '+f_height+']';
+	                el_media.style.width = '100%';
+				   	el_time = document.createElement('div');
+				   	el_time.className = 'op left-align';
+				   	el_time.id = 'time';
+				   	el_time_val = document.createElement('span');
+				   	el_time_val.id = 'time_val';
+				   	el_time_val.innerHTML = SecondsTohhmmss(time_now);
+				   	btn_frame = document.createElement('button');
+				   	btn_frame.className = 'btn';
+				   	btn_frame.id = 'render_frame';
+				   	btn_frame.innerHTML = 'choose time and render frame';
+
+				   	btn_frame.addEventListener('click', function(e){
+				   			renderFrame();
+				   	});
+
+				   	el_drop.removeChild(busy_cont);     
+
+				   	el_time.appendChild(btn_frame);
+					el_time.appendChild(el_time_val);
+				   	el_drop.appendChild(el_time);
+				    //el_media.play();
+
+				    // Video file ready 
+
+				};
+
+				el_drop.appendChild(el_media);
+				el_media.id = 'media';
+				el_media.load();
+
+
+            } else if(f_type.split('/')[0] === 'audio' ){
+
+            	stat('loading audio');
+
+            	busy_cont = createBusySpinner();
+            	el_drop.appendChild(busy_cont);
+                el_media = document.createElement('audio'); 
+                el_media.setAttribute('controls', true);
+
+				var source = document.createElement('source');
+				source.type = f_type;
+				source.src = file_blob;
+				el_media.appendChild(source);
+
+				el_media.addEventListener('durationchange', function(e){
+					//console.log('audio durationchange: ', e);					
+					f_duration = e.target.duration; // in float seconds
+					f_duration_fmt = SecondsTohhmmss(f_duration);
+
+					el_fduration.innerHTML = f_duration + ' seconds ['+f_duration_fmt+']';
+					el_drop.removeChild(busy_cont);
+					stat('audio loaded');
+                    
+                    objectUrlToBlob(file_blob, function(blob){
+                    	file_blob_data = blob;
+	                    console.log(file_blob_data);
+
+	                    blobToArrayBuffer(file_blob_data, function(audio_data){
+	                    	audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	                    	audioCtx.decodeAudioData(audio_data, function(audio_buffer) {
+								log('duration: ' + audio_buffer.duration);
+								log('size: ' + audio_buffer.length);
+								log('channels : ' + audio_buffer.numberOfChannels);
+								log('sample rate: ' + audio_buffer.sampleRate);
+
+								drawWaveform( audio_buffer, wave_col, wave_width, wave_height );
+
+								// Audio file ready... 
+
+						    });
+	                    });
+                    });
+				});
+
+				el_drop.appendChild(el_media);
+				el_media.id = 'media';
+				el_media.load();
+
+            } else {
+            	msg('unsupported file type<br><br>please try again');
+            }
+		}
+		return false;
+	}
+
+	function drawWaveform( buffer, col, w, h ) {
+		col = col || 'green';
+        w || 1000;
+        h || 1000;
+
+        var canvas_wave = document.createElement('canvas');
+        canvas_wave.width = w;
+		canvas_wave.height = h;
+		var wave_ctx = canvas_wave.getContext('2d');
+		wave_ctx.fillStyle = col;
+
+	    var data = buffer.getChannelData( 0 );
+	    var step = Math.ceil( data.length / w );
+	    var amp = h / 2;
+	    for(var i = 0; i < w; i++){
+	        var min = 1.0;
+	        var max = -1.0;
+	        for (var j = 0; j < step; j++) {
+	            var datum = data[ (i * step) + j ]; 
+	            if (datum < min)
+	                min = datum;
+	            if (datum > max)
+	                max = datum;
+	        }
+	        wave_ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+	    }
+	    // create a PNG from the canvas
+        canvas_wave.toBlob(function(blob){
+			console.log('rendered waveform image blob: ', blob);
+    		var _thumb = document.createElement('img');
+    		_thumb.id = 'waveform';
+    		var wave_ = URL.createObjectURL(blob);
+    		_thumb.src = wave_;
+    		el_drop.appendChild(_thumb);
+    		//blbb = null;    		
+    		log('waveform rendered: <a href="'+wave_+'" target="_blank">view</a> - <a download="wave_2_'+f_name.split( f_name.split('.')[1] ).join('png')+'" href="'+wave_+'" target="_blank">save</a>');
+    		//URL.revokeObjectURL(blob)
+    		canvas_wave = null;
+    		wave_ctx = null;
+    		buffer = null;
+
+		}, 'image/png');
+
+	}
+
+
+
+	function renderFrame(){
+		// console.log('render: ', time_now);
+		var canvas = document.createElement('canvas');
+		var ctx = canvas.getContext('2d');
+		canvas.width = f_width;
+		canvas.height = f_height;
+
+		ctx.drawImage(el_media, 0, 0);
+		// for one
+		//if(el_thumb!==null){
+    	//	el_drop.removeChild( el_thumb );
+		//	el_thumb = null;
+		//}
+
+		canvas.toBlob(function(blb){
+			// console.log('rendered image blob: ', blb);
+    		// many
+    		// var _thumb = document.createElement('img');
+    		// _thumb.className = 'thumb';
+    		// _thumb.src = URL.createObjectURL(blb);
+    		// el_drop.appendChild(_thumb);
+    		if(el_thumb===null){
+    			el_thumb = document.createElement('img');
+	    		el_thumb.className = 'thumb';
+    		}
+    		var frame_image = URL.createObjectURL(blb);
+    		el_thumb.src = frame_image;
+    		el_drop.appendChild(el_thumb);
+
+    		log('frame @['+SecondsTohhmmss(time_now)+']: <a href="'+frame_image+'" target="_blank">view</a> - <a download="frame_'+Math.round(time_now * 1000)+'_'+f_name.split( f_name.split('.')[1] ).join('png')+'" href="'+frame_image+'" target="_blank">save</a>');
+
+		}, 'image/png');
+	}
+
+	function objectUrlToBlob(blob_url, callback){
+		var xhr = new XMLHttpRequest();
+		xhr.open('GET', blob_url, true);
+		xhr.responseType = 'blob';
+		xhr.onload = function(e) {
+		  if (this.status == 200) {
+		  	callback(this.response);
+		    //return this.response;
+		  }
+		};
+		xhr.send();
+	}
+
+	function blobToArrayBuffer(blob, callback) {
+        //var my = this;
+        console.log('blobToArrayBuffer: ', blob);
+        // Create file reader
+        var reader = new FileReader();
+        reader.addEventListener('progress', function (e) {
+            //my.onProgress(e);
+            console.log('blobToArrayBuffer progress : ', e);
+        });
+        reader.addEventListener('load', function (e) {
+            //my.empty();
+            //my.loadArrayBuffer(e.target.result);
+            console.log('blobToArrayBuffer loaded : ', e);
+            callback(e.target.result);
+
+        });
+        reader.addEventListener('error', function (e) {
+            //my.fireEvent('error', 'Error reading file');
+            console.log('blobToArrayBuffer error', e);
+        });
+        reader.readAsArrayBuffer(blob);
+    }
+
+
+	// Canvas.toBlob() polyfill : https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob#Polyfill
+	if (!HTMLCanvasElement.prototype.toBlob) {
+	 Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+	  value: function (callback, type, quality) {
+	  	var _dat = this.toDataURL(type, quality);
+	    var binStr = atob( _dat.split(',')[1] ),
+	        len = binStr.length,
+	        arr = new Uint8Array(len);
+
+	    for (var i=0; i<len; i++ ) {
+	     arr[i] = binStr.charCodeAt(i);
+	    }
+	    _dat = null;
+	    binStr = null;
+	    callback( new Blob( [arr], {type: type || 'image/png'} ) );
+	  }
+	 });
+	}
+
+	function log(message) {
+        var li = document.createElement('li');
+        li.innerHTML = message;
+        logs.appendChild(li);
+    }
+
+	function removeAllChildren(theParent){
+	    // Create the Range object
+	    var rangeObj = new Range();
+	    // Select all of theParent's children
+	    rangeObj.selectNodeContents(theParent);
+	    // Delete everything that is selected
+	    rangeObj.deleteContents();
+	}
+
+	function dataURItoBlob(dataURI) {
+	  // convert base64 to raw binary data held in a string
+	  // doesn't handle URLEncoded DataURIs - see SO answer #6850276 for code that does this
+	  var byteString = atob(dataURI.split(',')[1]);
+	  // separate out the mime component
+	  var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0]
+	  // write the bytes of the string to an ArrayBuffer
+	  var ab = new ArrayBuffer(byteString.length);
+	  var ia = new Uint8Array(ab);
+	  for (var i = 0; i < byteString.length; i++) {
+	      ia[i] = byteString.charCodeAt(i);
+	  }
+	  // write the ArrayBuffer to a blob, and you're done
+	  var blob = new Blob([ab], {type: mimeString});
+	  return blob;
+	}
+
+    var SecondsTohhmmss = function(totalSeconds) {
+	  var hours   = Math.floor(totalSeconds / 3600);
+	  var minutes = Math.floor((totalSeconds - (hours * 3600)) / 60);
+	  var seconds = totalSeconds - (hours * 3600) - (minutes * 60);
+
+	  // round seconds
+	  seconds = Math.round(seconds * 100) / 100
+
+	  var result = (hours < 10 ? "0" + hours : hours);
+	      result += ":" + (minutes < 10 ? "0" + minutes : minutes);
+	      result += ":" + (seconds  < 10 ? "0" + seconds : seconds);
+	  return result;
+	}
+
+
+</script>
+
+
+
+
+<style type="text/css">
+	img#media{
+		width: 100%;
+	}
+	audio#media{
+		width: 100%;
+		height: 40px;
+		z-index: 1;
+	}
+	video#media{
+		z-index: 1;
+	}
+	#droptarget{
+		text-align: center;
+		border: 4px dashed #ddd;
+		padding: 6px;
+		margin: 6px;
+		font-family: monospace;
+		font-weight: bold;
+		font-size: 20px;
+		position: relative;
+		background: #eee;
+	}
+	#droptarget > p{
+		padding: 20px;
+	}
+	.op{
+		border: 1px solid #777;
+		padding: 6px;
+		margin: 6px;
+		background: #eee;
+		color: #222;
+		font-family: monospace;
+	}
+	#status{
+		background: #222;
+		color: #eee;
+		font-weight: bold;
+	}
+	#busy{
+		position: relative;
+		width: 60px;
+		height: 60px;
+		background: #333;
+		border-radius: 30px;
+		text-align: center;
+		overflow: hidden;
+		left: calc(50% - 30px);
+		top: calc(50% - 30px);
+	}
+	#dot{
+		position: relative;
+		width: 10px;
+		height: 10px;
+		margin: 12px;
+		background: #fff;
+		border-radius: 5px;
+	}
+	#busy_cont{
+		top:0px;
+		left:0px;
+		right: 0px;
+		bottom: 0px;
+		z-index: 1000;
+		background: rgba(255,255,255,0.8);
+		width: 100%;
+		height: 100%;
+		position: absolute;
+	}
+	li{
+		line-height: 1.8em;
+	}
+	.thumb{	
+		width: 100%;
+	}
+	#time{
+		font-size: 18px;
+	}
+
+	@-webkit-keyframes webkit-anim-rotate {
+	  0% {
+	    transform: rotate(0);
+	    -webkit-transform: rotate(0);
+	  }
+	  100% {
+	    transform: rotate(359deg);
+	    -webkit-transform: rotate(359deg);
+	  }
+	}
+	@-moz-keyframes moz-anim-rotate {
+	  0% {
+	    -moz-transform: rotate(0);
+	  }
+	  100% {
+	    -moz-transform: rotate(359deg);
+	  }
+	}
+	@-ms-keyframes ms-anim-rotate {
+	  0% {
+	    -ms-transform: rotate(0);
+	  }
+	  100% {
+	    -ms-transform: rotate(359deg);
+	  }
+	}
+	@-o-keyframes o-anim-rotate {
+	  0% {
+	    -o-transform: rotate(0);
+	  }
+	  100% {
+	    -o-transform: rotate(359deg);
+	  }
+	}
+	@keyframes anim-rotate {
+	  0% {
+	    transform: rotate(0);
+	  }
+	  100% {
+	    transform: rotate(359deg);
+	  }
+	}
+
+	.btn{
+		font-family: sans-serif;
+		color: white;
+		background: #333;
+		font-size: 13px;
+	}
+	#render_frame{
+		float: right;
+
+	}
+	.left-align{
+		text-align: left;
+	}
+	.spinner {
+	    -webkit-animation: webkit-anim-rotate 2s infinite linear;
+	    -moz-animation: moz-anim-rotate 2s infinite linear;
+	    -ms-animation: ms-anim-rotate 2s infinite linear;
+	    -o-animation: o-anim-rotate 2s infinite linear;
+	    animation: anim-rotate 2s infinite linear;
+	}
+
+	#wave_holder{
+        margin-left: 0px;
+        margin-right: 0px;
+        border:0px solid #ccc;
+        height: 800px;
+        top:100px;
+        position: relative;
+        visibility: hidden;
+    }
+
+    #wave{
+        left:0;
+        right:0;
+        text-align: left;
+        position: absolute;
+        top:0px;
+        height: 800px;
+        overflow:hidden;
+    }
+    #wave_centre{
+        width: 100%;
+        height: 1px;
+        background: #888;
+        position: absolute;
+        top:50%;
+    }
+
+    img#waveform{
+    	width: 100%;
+    }
+
+    @media all and (min-width:600px) {
+    	#droptarget{
+    		width:60%;
+    		float: right;
+    	}
+    	#info{
+    		width: 34%;
+    		float: left;
+    	}
+    }
+
+</style>
+
+</head>
+
+<body onload="init()">
+
+<div id="droptarget" ondrop="drop(event)" ondragleave="dragout()" ondragover="allowDrop(event)">
+	<p>
+		drop a media file here
+		<span style="font-size:12px"><br>(jpg, gif, png, mp3, wav, m4a, ogg, mp4, m4v, avi) </span>
+	</p>
+
+</div>
+
+<div id="info">
+	<div class="op" id="f_name">.</div>
+	<div class="op" id="f_type">.</div>
+	<div class="op" id="f_size">.</div>
+	<div class="op" id="f_duration">.</div>
+	<div class="op" id="status">.</div>
+	<div class="op" id="logs">
+		<h6 style="margin:0">OUTPUT LOGS:</h6>
+	</div>
+</div>
+
+</body>
+</html>
