@@ -5,7 +5,7 @@ A simple example HTML + JS file which provides an interface to drag and drop a s
 
 Supports : (most) `jpg`, `gif`, `png`, `mp3`, `wav`, `m4a`, `ogg`, `mp4`, `m4v` and `avi` files.
 
-#### [DEMO](https://kosso.github.io/demos/media_drop.html)
+#### [DEMO](https://kosso.github.io/demos/media_drop/media_drop.html)
 
 - Image files do nothing but ready the file info for whatever you need.
 - Audio files will automatically create an audio waveform PNG file. 

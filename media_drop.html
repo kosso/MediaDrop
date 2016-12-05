@@ -32,7 +32,7 @@
 
 
 
-	var el_drop, el_media, el_status, el_fname, el_ftype, el_fsize, el_fduration, el_time, el_time_val, el_media_width, el_media_height, el_thumb, el_wave, f_type, f_name, f_width, f_height, f_size, f_duration, f_duration_fmt, file_blob, audioCtx, logs, busy, busy_cont, time_now = 0;
+	var el_drop, el_media, el_status, el_fname, el_ftype, el_fsize, el_fduration, el_time, el_time_val, el_media_width, el_media_height, el_thumb, el_wave, f_type, f_name, f_width, f_height, f_size, f_duration, f_duration_fmt, file_blob, audioCtx, logs, btn_clear_logs,  busy, busy_cont, time_now = 0;
 
     function init(){
 
@@ -46,7 +46,7 @@
         }
 
         logs = document.getElementById('logs');
-
+        btn_clear_logs = document.getElementById('clear');
     	el_status = document.getElementById('status');
     	el_drop = document.getElementById('droptarget');        	
     	el_fname = document.getElementById('f_name');
@@ -63,6 +63,12 @@
 		},false);
 
         console.log('ready');
+
+
+		btn_clear_logs.addEventListener('click',function(e){
+		  logs.innerHTML = '<h6 style="margin:0">OUTPUT LOGS:</h6>';
+		});
+
 
     }	
 
@@ -169,13 +175,19 @@
             	el_fduration.innerHTML = '-';
             	el_drop.appendChild(el_media);
             	el_media.addEventListener('load', function(e){
-					console.log('image loaded: ', e);
-					console.log(el_media.naturalWidth);
+					// console.log('image loaded: ', e);
 					el_fduration.innerHTML = el_media.naturalWidth + ' x ' + el_media.naturalHeight;
 					stat('image loaded');
 					el_drop.removeChild(busy_cont);
 
-					// Image ready ...
+
+				    objectUrlToBlob(file_blob, function(blob){
+                    	file_blob_data = blob;
+	                    console.log(file_blob_data);
+
+					    // Image file ready  (file_blob / file_blob_data)
+        
+                    });				
 				});
 
             } else if(f_type === 'video/mp4'){
@@ -240,7 +252,15 @@
 				   	el_drop.appendChild(el_time);
 				    //el_media.play();
 
-				    // Video file ready 
+				    objectUrlToBlob(file_blob, function(blob){
+                    	file_blob_data = blob;
+	                    console.log(file_blob_data);
+
+					    // Video file ready  (file_blob / file_blob_data)
+
+	                    
+                    });
+
 
 				};
 
@@ -286,7 +306,7 @@
 
 								drawWaveform( audio_buffer, wave_col, wave_width, wave_height );
 
-								// Audio file ready... 
+								// Audio file ready... (file_blob or file_blob_data)
 
 						    });
 	                    });
@@ -338,9 +358,9 @@
     		var wave_ = URL.createObjectURL(blob);
     		_thumb.src = wave_;
     		el_drop.appendChild(_thumb);
-    		//blbb = null;    		
+    		// blob = null;    		
     		log('waveform rendered: <a href="'+wave_+'" target="_blank">view</a> - <a download="wave_2_'+f_name.split( f_name.split('.')[1] ).join('png')+'" href="'+wave_+'" target="_blank">save</a>');
-    		//URL.revokeObjectURL(blob)
+    		// URL.revokeObjectURL(blob)
     		canvas_wave = null;
     		wave_ctx = null;
     		buffer = null;
@@ -357,21 +377,9 @@
 		var ctx = canvas.getContext('2d');
 		canvas.width = f_width;
 		canvas.height = f_height;
-
 		ctx.drawImage(el_media, 0, 0);
-		// for one
-		//if(el_thumb!==null){
-    	//	el_drop.removeChild( el_thumb );
-		//	el_thumb = null;
-		//}
 
 		canvas.toBlob(function(blb){
-			// console.log('rendered image blob: ', blb);
-    		// many
-    		// var _thumb = document.createElement('img');
-    		// _thumb.className = 'thumb';
-    		// _thumb.src = URL.createObjectURL(blb);
-    		// el_drop.appendChild(_thumb);
     		if(el_thumb===null){
     			el_thumb = document.createElement('img');
 	    		el_thumb.className = 'thumb';
@@ -392,35 +400,26 @@
 		xhr.onload = function(e) {
 		  if (this.status == 200) {
 		  	callback(this.response);
-		    //return this.response;
 		  }
 		};
 		xhr.send();
 	}
 
 	function blobToArrayBuffer(blob, callback) {
-        //var my = this;
         console.log('blobToArrayBuffer: ', blob);
-        // Create file reader
         var reader = new FileReader();
         reader.addEventListener('progress', function (e) {
-            //my.onProgress(e);
             console.log('blobToArrayBuffer progress : ', e);
         });
         reader.addEventListener('load', function (e) {
-            //my.empty();
-            //my.loadArrayBuffer(e.target.result);
             console.log('blobToArrayBuffer loaded : ', e);
             callback(e.target.result);
-
         });
         reader.addEventListener('error', function (e) {
-            //my.fireEvent('error', 'Error reading file');
             console.log('blobToArrayBuffer error', e);
         });
         reader.readAsArrayBuffer(blob);
     }
-
 
 	// Canvas.toBlob() polyfill : https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toBlob#Polyfill
 	if (!HTMLCanvasElement.prototype.toBlob) {
@@ -678,6 +677,26 @@
     	}
     }
 
+    #lnk{
+    	position: absolute;
+    	bottom: 10px;
+    	right:10px;
+    }
+
+    button#clear{
+    	background: #660000;
+    	color: white;
+    	width: 22px;
+    	height: 22px;
+    	border-radius: 11px;
+    	font-size: 11px;
+    	line-height: 6px;
+    	text-align: center;
+    	padding: 0px;
+    	margin-left: 4px;
+    	outline: none;
+    }
+
 </style>
 
 </head>
@@ -701,7 +720,12 @@
 	<div class="op" id="logs">
 		<h6 style="margin:0">OUTPUT LOGS:</h6>
 	</div>
+	<div id="clear-logs"><button id="clear">x</button></div>
 </div>
+
+
+<div id="lnk"><a href="http://github.com/kosso">@kosso</a></div>
+
 
 </body>
 </html>
